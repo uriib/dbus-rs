@@ -8,4 +8,3 @@ edition = "2024"
 [dependencies]
 dbus-native-channel = { path = "../dbus-native-channel" }
 dbus-strings = { path = "../dbus-strings" }
-libc = "0.2.66"

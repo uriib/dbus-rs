@@ -1,4 +1,3 @@
-
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Hash, Debug)]
 pub enum Authentication {
     WaitingForOK(bool),
@@ -22,34 +21,46 @@ impl Authentication {
         let old_state = *self;
         *self = Authentication::Error;
         let s = std::str::from_utf8(data)?;
-        if !s.ends_with("\r\n") { Err("D-Bus authentication error (no newline)")? };
+        if !s.ends_with("\r\n") {
+            Err("D-Bus authentication error (no newline)")?
+        };
         let s = s.trim();
         match old_state {
-            Authentication::Error | Authentication::Begin(_) => Err("D-Bus invalid authentication state")?,
-            Authentication::WaitingForOK(b) => if s.starts_with("OK ") || s == "OK" {
-                if b {
-                    *self = Authentication::WaitingForAgreeUnixFD;
-                    Ok("NEGOTIATE_UNIX_FD\r\n")
+            Authentication::Error | Authentication::Begin(_) => {
+                Err("D-Bus invalid authentication state")?
+            }
+            Authentication::WaitingForOK(b) => {
+                if s.starts_with("OK ") || s == "OK" {
+                    if b {
+                        *self = Authentication::WaitingForAgreeUnixFD;
+                        Ok("NEGOTIATE_UNIX_FD\r\n")
+                    } else {
+                        *self = Authentication::Begin(false);
+                        Ok("BEGIN\r\n")
+                    }
                 } else {
+                    Err(format!("D-Bus authentication error ({})", s))?
+                }
+            }
+            Authentication::WaitingForAgreeUnixFD => {
+                if s == "AGREE_UNIX_FD" {
+                    *self = Authentication::Begin(true);
+                    Ok("BEGIN\r\n")
+                } else if s.starts_with("ERROR ") || s == "ERROR" {
                     *self = Authentication::Begin(false);
                     Ok("BEGIN\r\n")
+                } else {
+                    Err(format!("D-Bus invalid response ({})", s))?
                 }
-            } else {
-                Err(format!("D-Bus authentication error ({})", s))?
-            },
-            Authentication::WaitingForAgreeUnixFD => if s == "AGREE_UNIX_FD" {
-                *self = Authentication::Begin(true);
-                Ok("BEGIN\r\n")
-            } else if s.starts_with("ERROR ") || s == "ERROR" {
-                *self = Authentication::Begin(false);
-                Ok("BEGIN\r\n")
-            } else {
-                Err(format!("D-Bus invalid response ({})", s))?
-            },
+            }
         }
     }
 
-    pub fn blocking<R: std::io::BufRead, W: std::io::Write>(r: &mut R, w: &mut W, do_unix_fd: bool) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn blocking<R: std::io::BufRead, W: std::io::Write>(
+        r: &mut R,
+        w: &mut W,
+        do_unix_fd: bool,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         let (mut a, s) = Authentication::new(do_unix_fd);
         w.write_all(s.as_bytes())?;
 
@@ -63,17 +74,22 @@ impl Authentication {
             let s = a.handle(&b)?;
             w.write_all(s.as_bytes())?;
         }
-        if let Authentication::Begin(ufd) = a { Ok(ufd) } else { unreachable!() }
+        if let Authentication::Begin(ufd) = a {
+            Ok(ufd)
+        } else {
+            unreachable!()
+        }
     }
 }
-
 
 #[test]
 fn session_auth() {
     let addr = crate::address::read_session_address().unwrap();
     // dbus-deamon (not the systemd variant) has abstract sockets, which rust does not
     // support. https://github.com/rust-lang/rust/issues/42048
-    if !addr.starts_with("unix:path=") { return; }
+    if !addr.starts_with("unix:path=") {
+        return;
+    }
     let path = std::path::Path::new(&addr["unix:path=".len()..]);
     let stream = std::os::unix::net::UnixStream::connect(&path).unwrap();
 
