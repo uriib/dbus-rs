@@ -1,12 +1,11 @@
 [package]
 name = "dbus-native"
 version = "0.1.0"
-authors = ["David Henningsson <diwic@ubuntu.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libc = "0.2.66"
-dbus-strings = { path = "../dbus-strings" }
 dbus-native-channel = { path = "../dbus-native-channel" }
+dbus-strings = { path = "../dbus-strings" }
+libc = "0.2.66"

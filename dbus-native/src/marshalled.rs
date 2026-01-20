@@ -1,16 +1,20 @@
 #![allow(dead_code)]
 
-#[cfg(target_endian="little")]
+#[cfg(target_endian = "little")]
 const IS_BIG_ENDIAN: bool = false;
-#[cfg(target_endian="big")]
+#[cfg(target_endian = "big")]
 const IS_BIG_ENDIAN: bool = true;
 
 const ARRAY_MAX_LEN: usize = 67108864;
 
-use std::str::from_utf8;
-use std::mem;
-use dbus_strings::{SignatureMulti, SignatureMultiBuf, SignatureSingle, SignatureSingleBuf, StringLike, DBusStr};
 use std::convert::TryInto;
+use std::mem;
+use std::str::from_utf8;
+
+use dbus_strings::{
+    DBusStr, SignatureMulti, SignatureMultiBuf, SignatureSingle, SignatureSingleBuf, StringLike,
+};
+
 use crate::types::DemarshalError;
 
 #[derive(Clone, Debug, Copy)]
@@ -36,18 +40,27 @@ pub struct Single<'a> {
 
 impl<'a> Multi<'a> {
     pub fn new(sig: &'a SignatureMulti, data: &'a [u8], is_big_endian: bool) -> Self {
-        Multi { sig, data, is_big_endian }
+        Multi {
+            sig,
+            data,
+            is_big_endian,
+        }
     }
 
     fn get_real_length(&self) -> Result<usize, DemarshalError> {
         let x = self.data.len();
         let mut iter = self.iter();
-        while let Some(r) = iter.next() { r?; }
+        while let Some(r) = iter.next() {
+            r?;
+        }
         Ok(x - iter.inner.data.len())
     }
 
     pub fn iter(&self) -> MultiIter<'a> {
-        MultiIter { inner: *self, start_pos: 0 }
+        MultiIter {
+            inner: *self,
+            start_pos: 0,
+        }
     }
 }
 
@@ -65,7 +78,9 @@ impl<'a> Iterator for MultiIter<'a> {
             if rest.len() > 0 {
                 len = align_up(len + self.start_pos, align_of(rest.as_bytes()[0])) - self.start_pos;
             }
-            if len > self.inner.data.len() { Err(DemarshalError::NotEnoughData)? }
+            if len > self.inner.data.len() {
+                Err(DemarshalError::NotEnoughData)?
+            }
             let (fdata, rdata) = self.inner.data.split_at(len);
             s.data = fdata;
             self.inner.data = rdata;
@@ -87,56 +102,105 @@ pub fn align_of(c: u8) -> usize {
         b'i' | b'u' | b'b' | b's' | b'o' | b'a' | b'h' => 4,
         b'x' | b't' | b'd' | b'(' | b'{' => 8,
 
-        _ => panic!("Unexpected byte in type signature: {}", c)
+        _ => panic!("Unexpected byte in type signature: {}", c),
     }
 }
 
 impl<'a> Single<'a> {
     fn read_f64(&self) -> Result<f64, DemarshalError> {
-        let x: [u8; 8] = self.data[0..8].try_into().map_err(|_| DemarshalError::NotEnoughData)?;
-        Ok(if self.is_big_endian { f64::from_be_bytes(x) } else { f64::from_le_bytes(x) })
+        let x: [u8; 8] = self.data[0..8]
+            .try_into()
+            .map_err(|_| DemarshalError::NotEnoughData)?;
+        Ok(if self.is_big_endian {
+            f64::from_be_bytes(x)
+        } else {
+            f64::from_le_bytes(x)
+        })
     }
 
     fn read8(&self) -> Result<u64, DemarshalError> {
-        let x: [u8; 8] = self.data[0..8].try_into().map_err(|_| DemarshalError::NotEnoughData)?;
-        Ok(if self.is_big_endian { u64::from_be_bytes(x) } else { u64::from_le_bytes(x) })
+        let x: [u8; 8] = self.data[0..8]
+            .try_into()
+            .map_err(|_| DemarshalError::NotEnoughData)?;
+        Ok(if self.is_big_endian {
+            u64::from_be_bytes(x)
+        } else {
+            u64::from_le_bytes(x)
+        })
     }
 
     fn read4(&self) -> Result<u32, DemarshalError> {
-        let x: [u8; 4] = self.data[0..4].try_into().map_err(|_| DemarshalError::NotEnoughData)?;
-        Ok(if self.is_big_endian { u32::from_be_bytes(x) } else { u32::from_le_bytes(x) })
+        let x: [u8; 4] = self.data[0..4]
+            .try_into()
+            .map_err(|_| DemarshalError::NotEnoughData)?;
+        Ok(if self.is_big_endian {
+            u32::from_be_bytes(x)
+        } else {
+            u32::from_le_bytes(x)
+        })
     }
 
     fn read2(&self) -> Result<u16, DemarshalError> {
-        let x: [u8; 2] = self.data[0..1].try_into().map_err(|_| DemarshalError::NotEnoughData)?;
-        Ok(if self.is_big_endian { u16::from_be_bytes(x) } else { u16::from_le_bytes(x) })
+        let x: [u8; 2] = self.data[0..1]
+            .try_into()
+            .map_err(|_| DemarshalError::NotEnoughData)?;
+        Ok(if self.is_big_endian {
+            u16::from_be_bytes(x)
+        } else {
+            u16::from_le_bytes(x)
+        })
     }
 
     fn read1(&self) -> Result<u8, DemarshalError> {
-        self.data.get(0).ok_or(DemarshalError::NotEnoughData).map(|x| *x)
+        self.data
+            .get(0)
+            .ok_or(DemarshalError::NotEnoughData)
+            .map(|x| *x)
     }
 
     fn read_sig(&self) -> Result<&'a SignatureMulti, DemarshalError> {
         let siglen = self.read1()? as usize;
-        let sig = self.data.get(1..siglen+1).ok_or(DemarshalError::NotEnoughData)?;
-        from_utf8(sig).ok().and_then(|s| SignatureMulti::new(s).ok()).ok_or(DemarshalError::InvalidString)
+        let sig = self
+            .data
+            .get(1..siglen + 1)
+            .ok_or(DemarshalError::NotEnoughData)?;
+        from_utf8(sig)
+            .ok()
+            .and_then(|s| SignatureMulti::new(s).ok())
+            .ok_or(DemarshalError::InvalidString)
     }
 
-    fn read_str<T: StringLike+ ?Sized>(&self) -> Result<&'a T, DemarshalError> {
+    fn read_str<T: StringLike + ?Sized>(&self) -> Result<&'a T, DemarshalError> {
         let len = self.read4()? as usize;
-        let s = self.data.get(4..len+4).ok_or(DemarshalError::NotEnoughData)?;
-        from_utf8(s).ok().and_then(|s| T::new(s).ok()).ok_or(DemarshalError::InvalidString)
+        let s = self
+            .data
+            .get(4..len + 4)
+            .ok_or(DemarshalError::NotEnoughData)?;
+        from_utf8(s)
+            .ok()
+            .and_then(|s| T::new(s).ok())
+            .ok_or(DemarshalError::InvalidString)
     }
 
     fn inner_variant(&self) -> Result<Single<'a>, DemarshalError> {
         let siglen = self.read1()? as usize;
-        let sig = self.data.get(1..siglen+1).ok_or(DemarshalError::NotEnoughData)?;
-        let sig = from_utf8(sig).ok().and_then(|s| SignatureSingle::new(s).ok()).ok_or(DemarshalError::InvalidString)?;
-        let data_start = align_up(self.start_pos + siglen+2, align_of(sig.as_bytes()[0])) - self.start_pos;
+        let sig = self
+            .data
+            .get(1..siglen + 1)
+            .ok_or(DemarshalError::NotEnoughData)?;
+        let sig = from_utf8(sig)
+            .ok()
+            .and_then(|s| SignatureSingle::new(s).ok())
+            .ok_or(DemarshalError::InvalidString)?;
+        let data_start =
+            align_up(self.start_pos + siglen + 2, align_of(sig.as_bytes()[0])) - self.start_pos;
         Ok(Single {
             sig,
             start_pos: self.start_pos + data_start,
-            data: self.data.get(data_start..).ok_or(DemarshalError::NotEnoughData)?,
+            data: self
+                .data
+                .get(data_start..)
+                .ok_or(DemarshalError::NotEnoughData)?,
             is_big_endian: self.is_big_endian,
         })
     }
@@ -165,37 +229,47 @@ impl<'a> Single<'a> {
             b'g' => self.read1()? as usize + 1 + 1,
             b'a' => {
                 let x = self.read4()? as usize;
-                if x > 67108864 { Err(DemarshalError::NumberTooBig)? };
+                if x > 67108864 {
+                    Err(DemarshalError::NumberTooBig)?
+                };
                 x + 4
-            },
+            }
             b'v' => {
                 let x = self.inner_variant()?;
                 x.get_real_length()? + (self.data.len() - x.data.len())
-            },
+            }
             b'(' => self.inner_struct().get_real_length()?,
-            c => panic!("Unexpected byte in type signature: {}", c)
+            c => panic!("Unexpected byte in type signature: {}", c),
         })
     }
 
     fn parse_array(&self) -> Result<Parsed<'a>, DemarshalError> {
         let x = self.read4()? as usize;
-        if x > 67108864 { Err(DemarshalError::NumberTooBig)? };
+        if x > 67108864 {
+            Err(DemarshalError::NumberTooBig)?
+        };
         Ok(if self.sig.as_bytes()[1] == b'{' {
-            let inner_sig = SignatureMulti::new_unchecked(&self.sig[2..self.sig.len()-1]);
+            let inner_sig = SignatureMulti::new_unchecked(&self.sig[2..self.sig.len() - 1]);
             let (key_sig, value_sig) = inner_sig.single().unwrap();
             let (value_sig, _) = value_sig.single().unwrap();
             let data_start = align_up(self.start_pos + 4, align_of(b'{')) - self.start_pos;
-            if data_start + x > self.data.len() { Err(DemarshalError::NotEnoughData)? };
+            if data_start + x > self.data.len() {
+                Err(DemarshalError::NotEnoughData)?
+            };
             Parsed::Dict(Dict {
                 outer_sig: self.sig,
-                key_sig, value_sig,
+                key_sig,
+                value_sig,
                 is_big_endian: self.is_big_endian,
                 data: &self.data[data_start..data_start + x],
             })
         } else {
             let inner_sig = SignatureSingle::new_unchecked(&self.sig[1..]);
-            let data_start = align_up(self.start_pos + 4, align_of(inner_sig.as_bytes()[0])) - self.start_pos;
-            if data_start + x > self.data.len() { Err(DemarshalError::NotEnoughData)? };
+            let data_start =
+                align_up(self.start_pos + 4, align_of(inner_sig.as_bytes()[0])) - self.start_pos;
+            if data_start + x > self.data.len() {
+                Err(DemarshalError::NotEnoughData)?
+            };
             Parsed::Array(Array {
                 data: &self.data[data_start..data_start + x],
                 start_pos: data_start + self.start_pos,
@@ -215,7 +289,7 @@ impl<'a> Single<'a> {
             b'b' => Parsed::Boolean(match self.read4()? {
                 0 => false,
                 1 => true,
-                _ => Err(DemarshalError::InvalidBoolean)?
+                _ => Err(DemarshalError::InvalidBoolean)?,
             }),
             b'h' => Parsed::UnixFd(self.read4()? as usize),
             b'x' => Parsed::Int64(self.read8()? as i64),
@@ -227,12 +301,22 @@ impl<'a> Single<'a> {
             b'v' => Parsed::Variant(self.inner_variant()?),
             b'(' => Parsed::Struct(self.inner_struct()),
             b'a' => self.parse_array()?,
-            c => panic!("Unexpected byte in type signature: {}", c)
+            c => panic!("Unexpected byte in type signature: {}", c),
         })
     }
 
-    pub fn new(sig: &'a SignatureSingle, data: &'a [u8], start_pos: usize, is_big_endian: bool) -> Self {
-        Single { sig, data, start_pos, is_big_endian }
+    pub fn new(
+        sig: &'a SignatureSingle,
+        data: &'a [u8],
+        start_pos: usize,
+        is_big_endian: bool,
+    ) -> Self {
+        Single {
+            sig,
+            data,
+            start_pos,
+            is_big_endian,
+        }
     }
 }
 
@@ -248,7 +332,9 @@ pub struct Array<'a> {
 impl<'a> Iterator for Array<'a> {
     type Item = Result<Single<'a>, DemarshalError>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data.len() == 0 { return None; }
+        if self.data.len() == 0 {
+            return None;
+        }
         let mut s = Single {
             is_big_endian: self.is_big_endian,
             data: self.data,
@@ -261,7 +347,8 @@ impl<'a> Iterator for Array<'a> {
         };
         s.data = &s.data[0..len];
         if len < s.data.len() {
-            len = align_up(len + self.start_pos, align_of(self.inner_sig.as_bytes()[0])) - self.start_pos;
+            len = align_up(len + self.start_pos, align_of(self.inner_sig.as_bytes()[0]))
+                - self.start_pos;
             self.start_pos += len;
             self.data = &self.data[len..];
         } else {
@@ -274,14 +361,16 @@ impl<'a> Iterator for Array<'a> {
 impl<'a> Iterator for Dict<'a> {
     type Item = Result<(Single<'a>, Single<'a>), DemarshalError>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data.len() == 0 { return None; }
+        if self.data.len() == 0 {
+            return None;
+        }
         let mut mi = MultiIter {
             start_pos: 0,
             inner: Multi {
-                sig: SignatureMulti::new_unchecked(&self.outer_sig[2..self.outer_sig.len()-1]),
+                sig: SignatureMulti::new_unchecked(&self.outer_sig[2..self.outer_sig.len() - 1]),
                 data: self.data,
                 is_big_endian: self.is_big_endian,
-            }
+            },
         };
         match (mi.next(), mi.next()) {
             (Some(Ok(k)), Some(Ok(v))) => {
@@ -292,16 +381,13 @@ impl<'a> Iterator for Dict<'a> {
                     self.data = &[];
                 }
                 Some(Ok((k, v)))
-            },
+            }
             (Some(Err(k)), Some(_)) => Some(Err(k)),
             (Some(_), Some(Err(v))) => Some(Err(v)),
-            _ => {
-                Some(Err(DemarshalError::NotEnoughData))
-            },
+            _ => Some(Err(DemarshalError::NotEnoughData)),
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ArrayBuf {
@@ -315,33 +401,43 @@ impl ArrayBuf {
         x.push_str("a");
         x.push_str(sig);
         let x = SignatureSingle::new_owned(x).map_err(|_| DemarshalError::InvalidString)?;
-        Ok(ArrayBuf { outer_sig: x, data: vec!() })
+        Ok(ArrayBuf {
+            outer_sig: x,
+            data: vec![],
+        })
     }
 
     fn verify_array_size(&mut self, old_len: usize) -> Result<(), DemarshalError> {
         if self.data.len() > ARRAY_MAX_LEN {
             self.data.truncate(old_len);
             Err(DemarshalError::NumberTooBig)
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     }
 
     pub fn append<T: Marshal + ?Sized>(&mut self, value: &T) -> Result<(), DemarshalError> {
-        if &self.outer_sig[1..] != &**value.signature() { return Err(DemarshalError::WrongType); }
+        if &self.outer_sig[1..] != &**value.signature() {
+            return Err(DemarshalError::WrongType);
+        }
         let old_len = self.data.len();
         value.append_data_to(&mut self.data);
         self.verify_array_size(old_len)
     }
 
     pub fn from_iter<'a, T, I>(iter: I) -> Result<Self, DemarshalError>
-    where T: Marshal + ?Sized + 'a,
-    &'a T: Default,
-    I: IntoIterator<Item=&'a T>
+    where
+        T: Marshal + ?Sized + 'a,
+        &'a T: Default,
+        I: IntoIterator<Item = &'a T>,
     {
         let def = <&T>::default();
         let defsig = def.signature();
         let mut r = ArrayBuf::new(defsig)?;
         for x in iter.into_iter() {
-            if x.signature() != defsig { return Err(DemarshalError::WrongType); }
+            if x.signature() != defsig {
+                return Err(DemarshalError::WrongType);
+            }
             x.append_data_to(&mut r.data);
         }
         r.verify_array_size(0)?;
@@ -350,7 +446,9 @@ impl ArrayBuf {
 }
 
 impl Marshal for ArrayBuf {
-    fn signature(&self) -> &SignatureSingle { &self.outer_sig }
+    fn signature(&self) -> &SignatureSingle {
+        &self.outer_sig
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         let slen = self.data.len() as u32;
         slen.append_data_to(v);
@@ -368,19 +466,35 @@ pub struct DictBuf {
 }
 
 impl DictBuf {
-    pub fn new(key_sig: SignatureSingleBuf, value_sig: SignatureSingleBuf) -> Result<Self, DemarshalError> {
+    pub fn new(
+        key_sig: SignatureSingleBuf,
+        value_sig: SignatureSingleBuf,
+    ) -> Result<Self, DemarshalError> {
         let mut x = String::with_capacity(key_sig.len() + value_sig.len() + 3);
         x.push_str("a{");
         x.push_str(&key_sig);
         x.push_str(&value_sig);
         x.push_str("}");
         let x = SignatureSingle::new_owned(x).map_err(|_| DemarshalError::InvalidString)?;
-        Ok(DictBuf { key_sig, value_sig, outer_sig: x, data: vec!() })
+        Ok(DictBuf {
+            key_sig,
+            value_sig,
+            outer_sig: x,
+            data: vec![],
+        })
     }
 
-    pub fn append<K: Marshal + ?Sized, V: Marshal + ?Sized>(&mut self, key: &K, value: &V) -> Result<(), DemarshalError> {
-        if &*self.value_sig != value.signature() { return Err(DemarshalError::WrongType); }
-        if &*self.key_sig != key.signature() { return Err(DemarshalError::WrongType); }
+    pub fn append<K: Marshal + ?Sized, V: Marshal + ?Sized>(
+        &mut self,
+        key: &K,
+        value: &V,
+    ) -> Result<(), DemarshalError> {
+        if &*self.value_sig != value.signature() {
+            return Err(DemarshalError::WrongType);
+        }
+        if &*self.key_sig != key.signature() {
+            return Err(DemarshalError::WrongType);
+        }
         let old_len = self.data.len();
         align_buf(&mut self.data, 8);
         key.append_data_to(&mut self.data);
@@ -388,12 +502,16 @@ impl DictBuf {
         if self.data.len() > ARRAY_MAX_LEN {
             self.data.truncate(old_len);
             Err(DemarshalError::NumberTooBig)
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     }
 }
 
 impl Marshal for DictBuf {
-    fn signature(&self) -> &SignatureSingle { &self.outer_sig }
+    fn signature(&self) -> &SignatureSingle {
+        &self.outer_sig
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         let slen = self.data.len() as u32;
         slen.append_data_to(v);
@@ -414,15 +532,16 @@ impl StructBuf {
         outer_sig.push('(');
         outer_sig.push_str(&inner.sig);
         outer_sig.push(')');
-        let outer_sig = SignatureSingle::new_owned(outer_sig).map_err(|_| DemarshalError::InvalidString)?;
-        Ok(StructBuf {
-            inner, outer_sig
-        })
+        let outer_sig =
+            SignatureSingle::new_owned(outer_sig).map_err(|_| DemarshalError::InvalidString)?;
+        Ok(StructBuf { inner, outer_sig })
     }
 }
 
 impl Marshal for StructBuf {
-    fn signature(&self) -> &SignatureSingle { &self.outer_sig }
+    fn signature(&self) -> &SignatureSingle {
+        &self.outer_sig
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         align_buf(v, 8);
         v.extend_from_slice(&self.inner.data)
@@ -437,17 +556,19 @@ pub struct VariantBuf {
 
 impl VariantBuf {
     pub fn new<T: Marshal + ?Sized>(value: &T) -> Result<Self, DemarshalError> {
-        let mut data = vec!();
+        let mut data = vec![];
         value.append_data_to(&mut data);
         Ok(VariantBuf {
             sig: value.signature().into(),
-            data
+            data,
         })
     }
 }
 
 impl Marshal for VariantBuf {
-    fn signature(&self) -> &SignatureSingle { SignatureSingle::new_unchecked("v") }
+    fn signature(&self) -> &SignatureSingle {
+        SignatureSingle::new_unchecked("v")
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         (&*self.sig).append_data_to(v);
         align_buf(v, align_of(self.sig.as_bytes()[0]));
@@ -527,15 +648,23 @@ pub struct MultiBuf {
 }
 
 impl MultiBuf {
-    pub fn new() -> Self { Default::default() }
-    pub fn multi(&self) -> Multi {
-        Multi { sig: &self.sig, data: &self.data, is_big_endian: IS_BIG_ENDIAN }
+    pub fn new() -> Self {
+        Default::default()
+    }
+    pub fn multi(&self) -> Multi<'_> {
+        Multi {
+            sig: &self.sig,
+            data: &self.data,
+            is_big_endian: IS_BIG_ENDIAN,
+        }
     }
     pub fn append<T: Marshal + ?Sized>(&mut self, value: &T) -> Result<(), DemarshalError> {
         // Adding two signatures does not increase depth, so we don't need to re-verify the
         // entire signature, just check that the length is not too big.
         let new_sig = value.signature();
-        if self.sig.len() + new_sig.len() > 255 { return Err(DemarshalError::NumberTooBig)}
+        if self.sig.len() + new_sig.len() > 255 {
+            return Err(DemarshalError::NumberTooBig);
+        }
         let temp = mem::replace(&mut self.sig, Default::default());
         let mut temp = temp.into_inner();
         temp.push_str(new_sig);
@@ -571,12 +700,12 @@ const ZEROS: [u8; 8] = [0; 8];
 pub fn align_buf(v: &mut Vec<u8>, align: usize) {
     let vlen = v.len();
     let x = align_up(vlen, align);
-    v.extend_from_slice(&ZEROS[..(x-vlen)])
+    v.extend_from_slice(&ZEROS[..(x - vlen)])
 }
 
 pub trait Marshal {
     fn signature(&self) -> &SignatureSingle;
-//    fn append_sig_to(&self, s: &mut SignatureMultiBuf) -> Result<(), DemarshalError>;
+    //    fn append_sig_to(&self, s: &mut SignatureMultiBuf) -> Result<(), DemarshalError>;
     fn append_data_to(&self, v: &mut Vec<u8>);
 }
 
@@ -591,7 +720,7 @@ macro_rules! marshal_impl {
                 v.extend_from_slice(&self.to_ne_bytes())
             }
         }
-    }
+    };
 }
 
 marshal_impl!(u8, "y", 1);
@@ -604,7 +733,9 @@ marshal_impl!(i64, "x", 8);
 marshal_impl!(f64, "d", 8);
 
 impl Marshal for DBusStr {
-    fn signature(&self) -> &SignatureSingle { SignatureSingle::new_unchecked("s") }
+    fn signature(&self) -> &SignatureSingle {
+        SignatureSingle::new_unchecked("s")
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         let slen = self.len() as u32;
         slen.append_data_to(v);
@@ -614,14 +745,18 @@ impl Marshal for DBusStr {
 }
 
 impl Marshal for dbus_strings::ObjectPath {
-    fn signature(&self) -> &SignatureSingle { SignatureSingle::new_unchecked("o") }
+    fn signature(&self) -> &SignatureSingle {
+        SignatureSingle::new_unchecked("o")
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         self.as_dbus_str().append_data_to(v);
     }
 }
 
 impl Marshal for SignatureMulti {
-    fn signature(&self) -> &SignatureSingle { SignatureSingle::new_unchecked("g") }
+    fn signature(&self) -> &SignatureSingle {
+        SignatureSingle::new_unchecked("g")
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         v.push(self.len() as u8);
         v.extend_from_slice(self.as_bytes());
@@ -630,7 +765,9 @@ impl Marshal for SignatureMulti {
 }
 
 impl Marshal for SignatureSingle {
-    fn signature(&self) -> &SignatureSingle { SignatureSingle::new_unchecked("g") }
+    fn signature(&self) -> &SignatureSingle {
+        SignatureSingle::new_unchecked("g")
+    }
     fn append_data_to(&self, v: &mut Vec<u8>) {
         v.push(self.len() as u8);
         v.extend_from_slice(self.as_bytes());
